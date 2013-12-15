@@ -1,11 +1,12 @@
 package org.apache.hadoop.hive.ql.cs;
 
-import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 
 import org.apache.hadoop.hive.ql.exec.ExtractOperator;
-import org.apache.hadoop.hive.ql.exec.FilterOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
-import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
+import org.apache.hadoop.hive.ql.parse.OpParseContext;
+import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 
 /**
  * Order By Operator
@@ -14,8 +15,8 @@ import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
  */
 public class SExtractOperator extends SOperator {
 
-	public SExtractOperator(ExtractOperator op) {
-		super(op);
+	public SExtractOperator(ExtractOperator op, List<SOperator> parents, LinkedHashMap<Operator<? extends OperatorDesc>, OpParseContext> ctx) {
+		super(op, parents, ctx);
 	}
 	
 	@Override

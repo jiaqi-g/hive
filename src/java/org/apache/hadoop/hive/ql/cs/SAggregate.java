@@ -1,24 +1,57 @@
 package org.apache.hadoop.hive.ql.cs;
 
+import java.util.HashSet;
+
 import org.apache.hadoop.hive.ql.plan.AggregationDesc;
+import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
+import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 
 public class SAggregate extends SDerivedColumn {
 
 	AggregationDesc desc;
-	SOperator sop;
-	
-	public SAggregate(AggregationDesc desc, SOperator sop) {
+
+	public SAggregate(String name, String tableAlias, SOperator sop, AggregationDesc desc) {
+		super(name, tableAlias, sop);
 		this.desc = desc;
-		this.sop = sop;
+	}
+
+	@Override
+	public boolean isGeneratedByAggregate() {
+		return true;
+	}
+
+	@Override
+	public int hashCode() {
+		return desc.getExprString().hashCode();
 	}
 	
-	@Override
-	public boolean isBaseType() {
-		return false;
+	public HashSet<SDerivedColumn> getParams() {
+		return directlyConnected;
 	}
-	
+
 	@Override
-	public String toString() {
-		return desc.getExprString();
+	public void setup(int i) {
+		for (ExprNodeDesc d : desc.getParameters()) {
+			for (ExprNodeColumnDesc cd : SDerivedColumn.extractDirectColumnDescs(d)) {				
+				String n = cd.getColumn();
+				String t = cd.getTabAlias();
+
+				if (n == null) {
+					n = "";
+				}
+				if (t == null) {
+					t = "";
+				}
+
+				for (SOperator p : sop.parents) {
+					for (SDerivedColumn c : p.columns) {
+						if (c.equals(n, t)) {
+							directlyConnected.add(c);
+							return;
+						}
+					}
+				}
+			}
+		}
 	}
 }

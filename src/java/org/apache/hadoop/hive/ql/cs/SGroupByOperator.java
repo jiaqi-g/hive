@@ -1,22 +1,16 @@
 package org.apache.hadoop.hive.ql.cs;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
-import org.apache.hadoop.hive.ql.exec.FilterOperator;
-import org.apache.hadoop.hive.ql.exec.LimitOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
-import org.apache.hadoop.hive.ql.exec.TableScanOperator;
+import org.apache.hadoop.hive.ql.parse.OpParseContext;
 import org.apache.hadoop.hive.ql.plan.AggregationDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 import org.apache.hadoop.hive.ql.plan.GroupByDesc;
+import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 import org.apache.hadoop.hive.ql.exec.GroupByOperator;
 
 /**
@@ -31,117 +25,123 @@ import org.apache.hadoop.hive.ql.exec.GroupByOperator;
  */
 public class SGroupByOperator extends SOperator {
 
-	GroupByDesc groupByDesc;
-	boolean isDistinct = false;
-	ArrayList<SAggregate> aggregators = null;
-	ArrayList<SDerivedColumn> keys = null;
-	
-	public SGroupByOperator(GroupByOperator op) {
-		super(op);
-		groupByDesc = op.getConf();
-		aggregators = new ArrayList<SAggregate>();
-		keys = new ArrayList<SDerivedColumn>();
-		
-		setupKeys();
-		setupAggregates();
-		
-		if ((aggregators == null) || (aggregators.size() == 0)) {
-			isDistinct = true;
-		}
-	}
-	
-	private void setupAggregates() {
-		for (AggregationDesc aggr: groupByDesc.getAggregators()) {
-			aggregators.add(new SAggregate(aggr, this));
-		}
-	}
-	
-	private void setupKeys() {
-		for (ExprNodeDesc key: groupByDesc.getKeys()) {
-			keys.add(SOperatorFactory.generateSColumnFromDesc(key, this));
-		}
-	}
-	
-	@Override
-	public void setColumnMap() {
-		/**
-		 * postMap maps from ExprNodeDesc -> SColumn
-		 */
-		Map<ExprNodeDesc, SColumn> postMap = new HashMap<ExprNodeDesc, SColumn>();
-		
-		//parents all columns, since table alias only stores in col
-		List<SColumn> parentsAllColumns = new ArrayList<SColumn>();
-		for (SOperator p: parents) {
-			parentsAllColumns.addAll(p.columns);
-		}
-		
-		Map<String, ExprNodeDesc> columnExprMap = op.getColumnExprMap();
-		//only maps ExprNodeColumnDesc type
-		for (ExprNodeDesc desc: columnExprMap.values()) {
-			if (desc instanceof ExprNodeColumnDesc) {
-				for (SColumn parentScol: parentsAllColumns) {
-					//special
-					if (parentScol.name.equals(((ExprNodeColumnDesc)desc).getColumn())) {
-                        postMap.put(desc, parentScol);
-                        break;
-					}
-				}
-			} else {
-				//do nothing
-			}
-		}
+	static HashSet<String> specialAggrs = new HashSet<String>();
 
-		int index = 0;
-		//generate final mapping
-		for (SColumn col: columns) {
-			ExprNodeDesc desc = columnExprMap.get(col.getName());
-			
-			if (desc == null) {
-				columnMap.put(col, aggregators.get(index));
-				System.out.println("=====================" + aggregators + " " + col);
-				index++;
-			}
-			else {
-				SAbstractColumn correspond = postMap.get(desc);
-				if (correspond == null) {
-					correspond = SOperatorFactory.generateSColumnFromDesc(columnExprMap.get(col.getName()), this);
-				}
-				columnMap.put(col, correspond);
-			}
+	static
+	{
+		specialAggrs.add("min");
+		specialAggrs.add("max");
+		specialAggrs.add("percentile");
+		specialAggrs.add("percentile_approx");
+	}
+
+	ArrayList<SAbstractColumn> keys;
+	ArrayList<SAggregate> aggregators;
+
+	boolean isDeduplication = false;
+
+	public SGroupByOperator(GroupByOperator op, List<SOperator> parents, LinkedHashMap<Operator<? extends OperatorDesc>, OpParseContext> ctx) {
+		super(op, parents, ctx);
+
+		keys = new ArrayList<SAbstractColumn>(columns);
+		columns.addAll(aggregators);
+		System.out.println("COLUMNS: " + columns);
+
+		isDeduplication = op.getConf().getAggregators().isEmpty();
+	}
+
+	@Override
+	protected void buildColumns() {
+		super.buildColumns();
+
+		aggregators = new ArrayList<SAggregate>();
+
+		for (AggregationDesc aggr: ((GroupByDesc)op.getConf()).getAggregators()) {
+			aggregators.add(new SAggregate(null, null, this, aggr));
 		}
 	}
-	
-	public SAbstractColumn getRootColumn(SColumn scol) {
-		//recursively call its parents until rootColumn or null
-		SAbstractColumn key = columnMap.get(scol);
-		for (SOperator parent: parents) {
-			if (key instanceof SColumn) {
-				if (parent.columnMap.containsKey( key )) {
-					return parent.getRootColumn( (SColumn) key );
-				}
-			}
-		}
-		
-		return key;
+
+	public SAggregate getAggregateAt(int i) {
+		return aggregators.get(i-keys.size());
 	}
-	
+
 	@Override
 	public String prettyString() {
 		String s = super.prettyString() + " Group By: ";
-		if (groupByDesc.getAggregators() != null) {
+		if (((GroupByDesc)op.getConf()).getAggregators() != null) {
 			s += "Aggregators: ";
-			for (AggregationDesc desc: groupByDesc.getAggregators()) {
+			for (AggregationDesc desc: ((GroupByDesc)op.getConf()).getAggregators()) {
 				s += desc.getExprString() + " ";
 			}
 		}
 
-		if (groupByDesc.getKeys() != null) {
+		if (((GroupByDesc)op.getConf()).getKeys() != null) {
 			s += "Keys: ";
-			for (ExprNodeDesc key: groupByDesc.getKeys()) {
+			for (ExprNodeDesc key: ((GroupByDesc)op.getConf()).getKeys()) {
 				s += key.getExprString() + " ";
 			}
 		}
-		
+
 		return s;
+	}
+
+	@Override
+	public boolean hasNestedAggregates() {
+		if (super.hasNestedAggregates()) {
+			return true;
+		}
+
+		for (SAbstractColumn k : keys) {
+			if (k.isGeneratedByAggregate()) {
+				System.out.println("========----Key: " + k);
+				return true;
+			}
+		}
+
+		for (SAggregate aggr : aggregators) {
+			for (SAbstractColumn param : aggr.getParams()) {
+				System.out.println("========----Param: " + param);
+				if (param.isGeneratedByAggregate()) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	@Override
+	public boolean hasSpecialAggregates() {
+		for (SAggregate aggr : aggregators) {
+			if (specialAggrs.contains(aggr.desc.getGenericUDAFName().toLowerCase())) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+	
+	@Override
+	public boolean isComplex(boolean hasComplexOnTheWay) {
+		if (hasComplexOnTheWay) {
+			return true;
+		}
+		
+		return super.isComplex(true);
+	}
+	
+	@Override
+	public boolean hasAggregates() {
+		System.out.println("***DEDUP " + isDeduplication);
+		if (isDeduplication) {
+			return super.hasAggregates();
+		} else {
+			return true;
+		}
+	}
+	
+	@Override
+	public boolean hasDeduplication() {
+		return true;
 	}
 }

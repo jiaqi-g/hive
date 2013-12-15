@@ -4,11 +4,8 @@ import java.io.PrintStream;
 import java.io.Serializable;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +26,6 @@ import org.apache.hadoop.hive.ql.exec.RowSchema;
 import org.apache.hadoop.hive.ql.exec.SelectOperator;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.Task;
-import org.apache.hadoop.hive.ql.hooks.ReadEntity;
 import org.apache.hadoop.hive.ql.metadata.Table;
 import org.apache.hadoop.hive.ql.parse.OpParseContext;
 import org.apache.hadoop.hive.ql.parse.ParseContext;
@@ -379,10 +375,11 @@ public class ExplainTaskHelper {
 		
 		try {
 			SOperator sop = SOperatorFactory.generateSOperatorTree(sinkOp, opParseCtx);
-			printSop(0, sop);
-			if (TestSQLTypes.mode) {
-				//System.out.println("!!!!!!TYPE: " +  new TestSQLTypes().test(sop));
-			}
+			sop.setup();
+			//printSop(0, sop);
+			//if (TestSQLTypes.mode) {
+			System.out.println("!!!!!!TYPE: " +  new TestSQLTypes().test(sop));
+			//}
 			//System.out.println(TestSQLTypes.tableToPrimaryKeyMap);
 		}
 		catch (Exception e) {
@@ -391,9 +388,7 @@ public class ExplainTaskHelper {
 		}
 		
 		System.out.println("------------");
-		if (!TestSQLTypes.mode) {
-			analyzeHelper(sinkOp, 0);
-		}
+		analyzeHelper(sinkOp, 0);
 		
 		//FunctionDependencyTest.printInfo();
 	}

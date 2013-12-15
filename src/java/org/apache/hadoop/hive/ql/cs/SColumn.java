@@ -1,80 +1,26 @@
 package org.apache.hadoop.hive.ql.cs;
 
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 
 public class SColumn extends SDerivedColumn {
-	
-	String name;
-	String tableAlias;
-	
+
+	ExprNodeColumnDesc desc;
+
 	/**
 	 * construct from ExprNodeColumnDesc
 	 * @param desc
 	 */
-	public SColumn (ExprNodeColumnDesc desc) {
-		//columnDesc = desc;
-		this.name = desc.getColumn();
-		this.tableAlias = desc.getTabAlias();
-		
-		if (this.name == null) {
-			throw new RuntimeException("Column Name should not be null!");
-		}
-		if (this.tableAlias == null) {
-			this.tableAlias = "null";
-		}
+	public SColumn (String name, String tableAlias, SOperator sop, ExprNodeColumnDesc desc) {
+		super(name, tableAlias, sop);
+		this.desc = desc;
 	}
 
-	/**
-	 * construct from name and tableAlias
-	 * @return
-	 */
-	public SColumn (String name, String tableAlias) {
-		this.name = name;
-		this.tableAlias = tableAlias;
-		
-		if (this.name == null) {
-			throw new RuntimeException("Column Name should not be null!");
-		}
-		if (this.tableAlias == null) {
-			this.tableAlias = "null";
-		}
-	}
-	
-	@Override
-	public boolean isBaseType() {
-		return false;
-	}
-	
-	
 	public String getName() {
 		return name;
 	}
 
 	public String getTableAlias() {
 		return tableAlias;
-	}
-	
-	public boolean equalsToNodeDesc(ExprNodeColumnDesc desc) {
-		return this.equals(new SColumn((ExprNodeColumnDesc) desc));
-	}
-
-	/**
-	 * Notice: we only consider name and table alias equal, without considering types equal
-	 */
-	public boolean equals(Object o) {
-		if (!(o instanceof SColumn)) {
-			return false;
-		}
-
-		SColumn dest = (SColumn) o;
-		if (!name.equals(dest.getName())) {
-			return false;
-		}
-		if (!tableAlias.equals(dest.getTableAlias())) {
-			return false;
-		}
-		return true;
 	}
 
 	/**
@@ -86,13 +32,34 @@ public class SColumn extends SDerivedColumn {
 	@Override
 	public int hashCode() {
 		int hash = 1;
-		hash = hash * 17 + name.hashCode();
-		hash = hash * 31 + tableAlias.hashCode();
+		hash = hash * 17 + ((name == null) ? 0 : name.hashCode());
+		hash = hash * 31 + ((tableAlias == null) ? 0 : tableAlias.hashCode());
 		return hash;
 	}
 
-	public String toString() {
-		return tableAlias + "[" + name + "] ";
+	@Override
+	public void setup(int i) {
+		String n = desc.getColumn();
+		String t = desc.getTabAlias();
+		if (n == null) {
+			n = "";
+		}
+		if (t == null) {
+			t = "";
+		}
+
+		for (SOperator p : sop.parents) {
+			for (SDerivedColumn c : p.columns) {
+				if (c.equals(n, t)) {
+					directlyConnected.add(c);
+					return;
+				}
+			}
+			if (p instanceof SGroupByOperator) {
+				directlyConnected.add(((SGroupByOperator)p).getAggregateAt(i));
+				return;
+			}
+		}
 	}
-	
+
 }

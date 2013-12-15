@@ -1,29 +1,18 @@
 package org.apache.hadoop.hive.ql.cs;
 
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.Map.Entry;
 
 import org.apache.hadoop.hive.ql.exec.ColumnInfo;
-import org.apache.hadoop.hive.ql.exec.GroupByOperator;
-import org.apache.hadoop.hive.ql.exec.JoinOperator;
-import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
 import org.apache.hadoop.hive.ql.exec.RowSchema;
-import org.apache.hadoop.hive.ql.exec.SelectOperator;
-import org.apache.hadoop.hive.ql.exec.FilterOperator;
-import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
-import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
+import org.apache.hadoop.hive.ql.exec.UnionOperator;
+import org.apache.hadoop.hive.ql.parse.OpParseContext;
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
-import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
-import org.apache.hadoop.hive.ql.plan.TableScanDesc;
+import org.apache.hadoop.hive.ql.plan.OperatorDesc;
 
 class ColumnNotMappedException extends RuntimeException {
 	private static final long serialVersionUID = 1L;
@@ -48,119 +37,134 @@ class ColumnNotMappedException extends RuntimeException {
  * 
  * @author victor
  */
-@SuppressWarnings("unchecked")
 public class SOperator {
-	//1. initialized when built
-	Operator op;
-	List<SColumn> columns; //output columns for this operator
-	
-	//2. initialized with set call
-	List<SOperator> parents;
 
-	//3. only be called if above call success
-	Map<SColumn, SAbstractColumn> columnMap; //map from *output* columns to *input* columns
+	protected Operator<? extends OperatorDesc> op;
+	protected List<SOperator> parents;
+	protected LinkedHashMap<Operator<? extends OperatorDesc>, OpParseContext> ctx;
 
-	public SOperator(Operator op) {
+	List<SDerivedColumn> columns = new ArrayList<SDerivedColumn>(); //output columns for this operator
+
+	public SOperator(Operator<? extends OperatorDesc> op, List<SOperator> parents, LinkedHashMap<Operator<? extends OperatorDesc>, OpParseContext> ctx) {
 		this.op = op;
-
-		//setup Columns
-		columns = new ArrayList<SColumn>();
-
-		RowSchema schema = op.getSchema();
-		for (ColumnInfo info: schema.getSignature()) {
-			SColumn col = new SColumn(info.getInternalName(), info.getTabAlias());
-			
-			columns.add(col);
-		}
-
-		columnMap = new HashMap<SColumn, SAbstractColumn>();
-		//initial value
-		//for (SColumn col: columns) {
-			//columnMap.put(col, col);
-		//}
-	}
-
-	public void setColumnMap() {
-		//intermediate mapping
-		Map<String, ExprNodeDesc> columnExprMap = op.getColumnExprMap();
-		if (columnExprMap == null || columnExprMap.size() == 0) {
-			for (SColumn scol: columns) {
-				columnMap.put(scol, scol);
-			}
-		} else {
-			setupMapping(columnExprMap);
-		}	
-	}
-	
-	private void setupMapping(Map<String, ExprNodeDesc> columnExprMap) {
-		/**
-		 * postMap maps from ExprNodeDesc -> SColumn
-		 */
-		Map<ExprNodeDesc, SColumn> postMap = new HashMap<ExprNodeDesc, SColumn>();
-		
-		//parents all columns, since table alias only stores in col
-		List<SColumn> parentsAllColumns = new ArrayList<SColumn>();
-		for (SOperator p: parents) {
-			parentsAllColumns.addAll(p.columns);
-		}
-		
-		//only maps ExprNodeColumnDesc type
-		for (ExprNodeDesc desc: columnExprMap.values()) {
-			if (desc instanceof ExprNodeColumnDesc) {
-				for (SColumn parentScol: parentsAllColumns) {
-					if (parentScol.equalsToNodeDesc((ExprNodeColumnDesc) desc)) {
-						postMap.put(desc, parentScol);
-						break;
-					}
-				}
-			} else {
-				//do nothing
-			}
-		}
-
-		//generate final mapping
-		for (SColumn col: columns) {
-			SAbstractColumn correspond = postMap.get(columnExprMap.get(col.getName()));
-			if (correspond == null) {
-				correspond = SOperatorFactory.generateSColumnFromDesc(columnExprMap.get(col.getName()), this);
-			}
-			columnMap.put(col, correspond);
-		}
-	}
-
-	public SAbstractColumn getRootColumn(SColumn scol) {
-		//recursively call its parents until rootColumn or null
-		for (SOperator parent: parents) {
-			SAbstractColumn key = columnMap.get(scol);
-			if (key instanceof SColumn) {
-				if (parent.columnMap.containsKey( key )) {
-					return parent.getRootColumn( (SColumn) key );
-				}
-			}
-		}
-
-		throw new ColumnNotMappedException(this.getClass() + "   " + columns + "  " + columnMap);
-	}
-
-	//bean methods
-	
-	public void setParents(List<SOperator> parents) {
 		this.parents = parents;
+		this.ctx = ctx;
+		buildColumns();
 	}
-	
-	public String toString() {
-		return op.getClass() + "\n" + columnMap.toString();
-	}
-	
-	public ArrayList<SAbstractColumn> getAllRootColumns() {
-		ArrayList<SAbstractColumn> lst = new ArrayList<SAbstractColumn>();
-		for (SColumn scol: columns) {
-			lst.add(getRootColumn(scol));
+
+	public void setup() {
+		for (SOperator p : parents) {
+			p.setup();
 		}
-		return lst;
+
+		for (int i = 0; i < columns.size(); ++i) {
+			columns.get(i).setup(i);
+		}
+	}
+
+	protected void buildColumns() {
+		RowSchema schema = op.getSchema();
+		Map<String, ExprNodeDesc> columnExprMap = op.getColumnExprMap();
+		//System.out.println(columnExprMap + " " + op.getClass());
+
+		if (columnExprMap == null) {
+			for (SDerivedColumn c: parents.get(0).columns) {
+				columns.add(SDerivedColumn.create(
+						c.name, c.tableAlias, this, 
+						new ExprNodeColumnDesc(double.class, c.name, c.tableAlias, false)));
+			}
+		}
+		else {
+			for (ColumnInfo info: schema.getSignature()) {
+				if (columnExprMap.get(info.getInternalName()) == null) {
+					continue;
+				}
+				columns.add(SDerivedColumn.create(
+						info.getInternalName(), info.getTabAlias(), this, 
+						columnExprMap.get(info.getInternalName())));
+			}
+		}
+	}
+
+	public String toString() {
+		return op.getClass() + "\n" + columns.toString();
+	}
+
+	public String prettyString() {
+		return columns.toString();
+	}
+
+	public boolean hasNestedAggregates() {
+		for (SOperator p : parents) {
+			if(p.hasNestedAggregates()) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	public boolean hasUnionOperators() {
+		for (SOperator p : parents) {
+			if (p.hasUnionOperators()) {
+				return true;
+			}
+		}
+
+		if (op instanceof UnionOperator) {
+			return true;
+		}
+
+		return false;
+	}
+
+	public boolean hasSpecialAggregates() {
+		for (SOperator p : parents) {
+			if (p.hasSpecialAggregates()) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 	
-	public String prettyString() {
-		return getAllRootColumns().toString();
+	public boolean isComplex(boolean hasComplexOnTheWay) {
+		for (SOperator p : parents) {
+			if (p.isComplex(true)) {
+				return true;
+			}
+		}
+		
+		return false;
+	}
+	
+	public boolean hasAggregates() {
+		for (SOperator p : parents) {
+			if (p.hasAggregates()) {
+				return true;
+			}
+		}
+		
+		return false;
+	}
+	
+	public boolean hasSelfJoin() {
+		for (SOperator p : parents) {
+			if (p.hasSelfJoin()) {
+				return true;
+			}
+		}
+		
+		return false;
+	}
+	
+	public boolean hasDeduplication() {
+		for (SOperator p : parents) {
+			if (p.hasDeduplication()) {
+				return true;
+			}
+		}
+		
+		return false;
 	}
 }
