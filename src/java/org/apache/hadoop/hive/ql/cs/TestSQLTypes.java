@@ -34,7 +34,7 @@ import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPEqual;
 
 public class TestSQLTypes {
 
-	public static boolean mode = true;
+	public static boolean mode = false;
 	public static String factTableName = "lineitem"; //all to lower cases to test
 	public static HashMap<String, HashSet<String>> tableToPrimaryKeyMap;
 	public static String path = "/home/victor/primarykey.txt";
@@ -47,7 +47,6 @@ public class TestSQLTypes {
 	public SOperator groupByOpStore;
 
 	static {
-		/*
 		Scanner sc = null;
 		try {
 			sc = new Scanner(new File(path));
@@ -64,11 +63,11 @@ public class TestSQLTypes {
 				tmp = sc.nextLine();
 				String[] arrs = tmp.split(":");
 
-				String name = arrs[0];
+				String name = arrs[0].trim();
 				HashSet<String> set = new HashSet<String>();
 				String[] cols = arrs[1].split(",");
 				for (String col: cols) {
-					set.add(col);
+					set.add(col.trim());
 				}
 
 				tableToPrimaryKeyMap.put(name, set);
@@ -77,138 +76,167 @@ public class TestSQLTypes {
 		catch (Exception e) {
 			throw new RuntimeException("Invalid Input file!");
 		}
-		 */
 	}
 
 	public TestSQLTypes() {
 	}
-
-	private String getTableOriginalName(STableScanOperator sOperator) {
-		String tableName = sOperator.tableName;
-		if (tableName != null) {
-			tableName = tableName.toLowerCase();
-		} else {
-			System.out.println("Fatal Error: STableScanOperator does not have original table name!");
-		}
-		return tableName;
-	}
-
+	
 	public int test(SOperator sOperator) {
 
 		//if (!hasGroupBy(sOperator)) return 4;
-
 		if (hasUnion(sOperator)) return 0;
 
 		if (isType0(sOperator)) return 0;
 		if (isType1(sOperator)) return 1;
 		if (isType2(sOperator)) return 2;
 		if (isType3(sOperator)) return 3;
-		//if (isType4(sOperator, new HashSet<FD>())) return 4;
+		//if (isType4(sOperator)) return 4;
 
 		return 4;
 	}
 
-	private Set<String> transform(HashSet<String> primaryKeyBasics, STableScanOperator tableScanStore) {
-
-		HashSet<String> set = new HashSet<String>();
+	private Collection<SBaseColumn> getPrimaryKeyColumns(STableScanOperator scanOp) {
+		HashSet<String> primaryKeyBasics = tableToPrimaryKeyMap.get(scanOp.tableName.toLowerCase());
+		
+		HashSet<SBaseColumn> set = new HashSet<SBaseColumn>();
 		for (String key: primaryKeyBasics) {
-			set.add(tableScanStore.id + key);
+			set.add(new SBaseColumn(key, scanOp, null));
 		}
 		return set;
 	}
-
-	private void extractFDs(ExprNodeDesc rootExpr, HashSet<FD> fdSet) {
+	
+	private void extractFDs(ExprNodeDesc rootExpr, HashSet<FD> fdSet, SOperator sop) {
 		if (rootExpr instanceof ExprNodeGenericFuncDesc) {
 			ExprNodeGenericFuncDesc funcDesc = (ExprNodeGenericFuncDesc)rootExpr;
 			GenericUDF udf = funcDesc.getGenericUDF();
 
 			List<ExprNodeDesc> childExprs = funcDesc.getChildExprs();
 			if (udf instanceof GenericUDFOPAnd) {
-
 				for (ExprNodeDesc d: childExprs) {
-					extractFDs(d, fdSet);
+					extractFDs(d, fdSet, sop);
 				}
 
 			} else if (udf instanceof GenericUDFOPEqual) {
 
 				ExprNodeDesc leftChild = childExprs.get(0);
 				ExprNodeDesc rightChild = childExprs.get(1);
-				if (leftChild instanceof ExprNodeColumnDesc || leftChild instanceof ExprNodeConstantDesc) {
-					if (rightChild instanceof ExprNodeColumnDesc || rightChild instanceof ExprNodeConstantDesc) {
-						//fdSet.add(new FD(, ));
+				
+				SBaseColumn det = null;
+				SBaseColumn dep = null;
+				if (leftChild instanceof ExprNodeColumnDesc) {
+					String c1 = leftChild.getExprString();
+					if (rightChild instanceof ExprNodeColumnDesc) {
+						String c2 = rightChild.getExprString();
+						det = sop.getRootColumn(new SColumn(c1, ((ExprNodeColumnDesc) leftChild).getTabAlias()));
+						dep = sop.getRootColumn(new SColumn(c2, ((ExprNodeColumnDesc) rightChild).getTabAlias()));
+						
+					} else if (rightChild instanceof ExprNodeConstantDesc) {
+						//String v2 = rightChild.getExprString();
+						det = sop.getRootColumn(new SColumn(c1, ((ExprNodeColumnDesc) leftChild).getTabAlias()));
+						dep = null;
+						
+					}
+				} else if (leftChild instanceof ExprNodeConstantDesc) {
+					//String v1 = leftChild.getExprString();
+					if (rightChild instanceof ExprNodeColumnDesc) {
+						String c2 = rightChild.getExprString();
+						det = null;
+						dep = sop.getRootColumn(new SColumn(c2, ((ExprNodeColumnDesc) rightChild).getTabAlias()));
+						
+					} else if (rightChild instanceof ExprNodeConstantDesc) {
+						//String v2 = rightChild.getExprString();
+						det = null;
+						dep = null;
 					}
 				}
+
+				if (det != null || dep != null) {
+					fdSet.add(new FD(det, dep));
+					fdSet.add(new FD(dep, det));
+				}
+			}
+		} else {
+			//nothing to do
+		}
+	}
+	
+	private boolean isType4(SOperator sOperator) {
+		checkType4(sOperator, new HashSet<FD>());
+		return r4;
+	}
+	
+	private STableScanOperator checkType4(SOperator sOperator, HashSet<FD> fdSet) {
+		
+		//recursive call
+		STableScanOperator scanOp = null;
+		for (SOperator parent : sOperator.parents) {
+			scanOp = checkType4(parent, fdSet);
+			if (scanOp != null) {
+				break; //two parents have scanOp are excluded from type3
+			}
+		}
+
+		//case analysis
+		if (sOperator.op instanceof TableScanOperator) {
+			//store FD
+			String tableName = ((STableScanOperator)sOperator).tableName.toLowerCase();
+			
+			Collection<SBaseColumn> primaryKeys = getPrimaryKeyColumns(((STableScanOperator)sOperator));
+			Collection<SBaseColumn> allColumns = ((STableScanOperator)sOperator).baseColumnMap.values();
+			fdSet.add(new FD(primaryKeys, allColumns));
+			
+			if (!tableName.equals(factTableName)) {
+				return null;
+			} else {
+				return (STableScanOperator) sOperator;
+			}
+			
+		} else if (sOperator.op instanceof FilterOperator) {
+			//store FD
+			extractFDs(((SFilterOperator) sOperator).expr, fdSet, sOperator);
+		} else if (sOperator.op instanceof JoinOperator) {
+			//since Join Conditions will be extracted to Filter, we do nothing here
+		} else if (sOperator.op instanceof SelectOperator) {
+			if (scanOp == null) {
+				return null;
+			}
+			infer(sOperator, fdSet, scanOp);
+		} else if (sOperator.op instanceof GroupByOperator) {
+			if (scanOp == null) {
+				return null;
+			}
+			infer(sOperator, fdSet, scanOp);
+		}
+
+		return scanOp;
+	}
+	
+	private void infer(SOperator sOperator, HashSet<FD> fdHashSet,
+			STableScanOperator scanOp) {
+		//judge
+		Collection<SBaseColumn> outputColumns = sOperator.getAllRootColumns();
+		Set<SBaseColumn> det = new HashSet<SBaseColumn>();
+		for (SBaseColumn bcol: outputColumns) {
+			if (bcol != null) {
+				det.add(bcol);
+			}
+		}
+
+		Collection<SBaseColumn> inputColumns = sOperator.parents.get(0).getAllRootColumns();
+		Set<SBaseColumn> inputs = new HashSet<SBaseColumn>();
+		for (SBaseColumn bcol: inputColumns) {
+			if (bcol != null) {
+				inputs.add(bcol);
 			}
 		}
 		
+		det.addAll(getPrimaryKeyColumns(scanOp));
+		
+		if (FD.judge(FD.infer(det, fdHashSet), inputs)) {
+			r4 = true;
+		}
 	}
 	
-	private STableScanOperator checkType4(SOperator sOperator, HashSet<FD> fdHashSet) {
-
-		//only one will satisfy
-		STableScanOperator tableScanStore = null;
-
-		for (SOperator parent : sOperator.parents) {
-			tableScanStore = checkType4(parent, fdHashSet);
-			if (tableScanStore != null) {
-				break;
-			}
-		}
-
-
-		if (sOperator.op instanceof TableScanOperator) {
-			//store FD
-
-			if (!tableScanStore.tableName.toLowerCase().equals(factTableName)) {
-				return null;
-			}
-
-			Set<String> primaryKeys = transform(tableToPrimaryKeyMap.get(getTableOriginalName(tableScanStore)), tableScanStore);
-			Set<String> allColumns = tableScanStore.getAllColumnsIds();
-
-			fdHashSet.add(new FD(primaryKeys, allColumns));
-
-			return tableScanStore;
-
-		} else if (sOperator.op instanceof FilterOperator) {
-			//store FD
-			HashSet<FD> fds = new HashSet<FD>();
-			extractFDs(((SFilterOperator) sOperator).expr, fds);
-
-		} else if (sOperator.op instanceof JoinOperator) {
-			//store FD
-			//return 
-		} else if (sOperator.op instanceof SelectOperator) {
-			//judge
-			Collection<SBaseColumn> outputColumns = sOperator.getColumnRootMap().values();
-			Set<String> det = new HashSet<String>();
-			for (SBaseColumn bcol: outputColumns) {
-				if (bcol != null) {
-					det.add(bcol.getId());
-				}
-			}
-
-			Collection<SBaseColumn> inputColumns = sOperator.parents.get(0).getColumnRootMap().values();
-			Set<String> inputs = new HashSet<String>();
-			for (SBaseColumn bcol: inputColumns) {
-				if (bcol != null) {
-					inputs.add(bcol.getId());
-				}
-			}
-
-			/**
-			 * potentially wrong
-			 */
-			if (FD.judge(FD.infer(det, fdHashSet), inputs)) {
-				r4 = true;
-			}
-		} else if (sOperator.op instanceof GroupByOperator) {
-			//judge
-		}
-
-		return tableScanStore;
-	}
-
 	private boolean checkFactTable(SOperator sOperator) {
 
 		List<Boolean> results = new ArrayList<Boolean>();
@@ -218,9 +246,7 @@ public class TestSQLTypes {
 		}
 
 		if (sOperator.op instanceof TableScanOperator) {
-			String tableOriginalName = getTableOriginalName((STableScanOperator)sOperator);
-
-			if (tableOriginalName.equals(factTableName)) {
+			if (((STableScanOperator)sOperator).tableName.toLowerCase().equals(factTableName)) {
 				return true;
 			} else {
 				return false;
@@ -327,11 +353,10 @@ public class TestSQLTypes {
 
 	private boolean search(SOperator sop, String expr) {
 		SOperator parent = sop.parents.get(0);
-
-		Set<SColumn> set = parent.getColumnRootMap().keySet();
-		for (SColumn s: set) {
-			if (s.name.equals(expr)) {
-				if (parent.getColumnRootMap().get(s) == null) {
+		
+		for (SColumn scol: parent.columns) {
+			if (scol.name.equals(expr)) {
+				if (parent.getRootColumn(scol) == null) {
 					return true;
 				}
 			}
@@ -339,7 +364,7 @@ public class TestSQLTypes {
 
 		return false;
 	}
-
+	
 	private void testAggregate(String name) {
 		if (name.equals("sum") || name.equals("avg") || name.equals("count")) {}
 		else {
@@ -382,7 +407,6 @@ public class TestSQLTypes {
 	}
 
 	private boolean exist(SOperator sOperator) {
-
 		boolean e = false;
 
 		if (sOperator.parents.size() > 0) {
@@ -393,15 +417,13 @@ public class TestSQLTypes {
 
 		if (e) {
 			Operator rootOp = sOperator.op;
-
 			if (rootOp instanceof FilterOperator ||
 					rootOp instanceof CommonJoinOperator ||
 					rootOp instanceof GroupByOperator) {
 				r2 = false;
 			} else if (rootOp instanceof SelectOperator) {
 				try {
-					if (sOperator.getColumnRootMap().values().containsAll(
-							groupByOpStore.getColumnRootMap().values())) {}
+					if (sOperator.getAllRootColumns().containsAll(groupByOpStore.getAllRootColumns())) {}
 					else {
 						r2 = false;
 					}

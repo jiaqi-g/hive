@@ -6,17 +6,36 @@ import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 
 class FD {
-	Set<String> determinists;
-	Set<String> dependents;
+	Collection<SBaseColumn> determinists;
+	Collection<SBaseColumn> dependents;
 	
-	public FD(Set<String> determinists, Set<String> dependents) {
+	public FD(Collection<SBaseColumn> determinists, Collection<SBaseColumn> dependents) {
 		this.determinists = determinists;
 		this.dependents = dependents;
 	}
 	
-	public static Set<String> infer(Set<String> det, Set<FD> rules) {
+	public FD(SBaseColumn det, SBaseColumn dep) {
+		if (det == null && dep == null) {
+			System.out.println("Fatal Error: Det and Dep passed in are all NULL values");
+		}
+		
+		Collection<SBaseColumn> detCollection = new HashSet<SBaseColumn>();
+		Collection<SBaseColumn> depCollection = new HashSet<SBaseColumn>();
+		if (det != null) {
+			detCollection.add(det);
+		}
+		
+		if (dep != null) {
+			depCollection.add(dep);
+		}
+		
+		this.determinists = detCollection;
+		this.dependents = depCollection;
+	}
+	
+	public static Collection<SBaseColumn> infer(Collection<SBaseColumn> det, Collection<FD> rules) {
 		boolean flag = false;
-		Set<String> ret = new HashSet<String>(det);
+		Collection<SBaseColumn> ret = new HashSet<SBaseColumn>(det);
 		do
 		{
 			flag = false;
@@ -30,12 +49,8 @@ class FD {
 		return ret;
 	}
 	
-	public static boolean judge(Set<String> inferred, Set<String> originals) {
-		if (inferred.containsAll(originals)) {
-			return true;
-		} else {
-			return false;
-		}
+	public static boolean judge(Collection<SBaseColumn> inferred, Collection<SBaseColumn> originals) {
+		return inferred.containsAll(originals);
 	}
 }
 
@@ -59,7 +74,7 @@ public class FunctionDependencyTest<T> {
 			fd.addAll(sop.rootFD);
 		}
 		
-		//repeat adding dependencies to FD set until no longer changed 
+		//repeat adding dependencies to FD Collection until no longer changed 
 		boolean changed = true;
 		while (changed) {
 			changed = false;
@@ -67,7 +82,7 @@ public class FunctionDependencyTest<T> {
 			
 		}
 
-		Set<T> results = new HashSet<T>();
+		Collection<T> results = new HashCollection<T>();
 
 		if (stat.dependency.conditions == null || conditions.containsAll(stat.dependency.conditions)) {
 			results.addAll(stat.dependency.results);

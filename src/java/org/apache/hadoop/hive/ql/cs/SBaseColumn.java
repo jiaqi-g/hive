@@ -1,25 +1,27 @@
 package org.apache.hadoop.hive.ql.cs;
 
-public class SBaseColumn implements IColumn {
+public class SBaseColumn extends SAbstractColumn {
 	
 	STableScanOperator sop;
 	String name;
+	String alias;
 	
 	/**
 	 * construct from name and tableAlias
 	 * @return
 	 */
-	public SBaseColumn (String name, STableScanOperator sop) {
+	public SBaseColumn (String name, STableScanOperator sop, String alias) {
 		this.name = name;
 		this.sop = sop;
+		this.alias = alias;
 		
 		if (this.name == null || this.sop == null) {
 			throw new RuntimeException("Column Name or Sop should not be null!");
 		}
 	}
 	
-	public SBaseColumn (SColumn scol, STableScanOperator sop) {
-		this(scol.name, sop);
+	public SBaseColumn (SColumn scol, STableScanOperator sop, String alias) {
+		this(scol.name, sop, alias);
 	}
 	
 	public String getName() {
@@ -59,7 +61,7 @@ public class SBaseColumn implements IColumn {
 	}
 
 	public String toString() {
-		return "BASE: " + sop.tableName + "[" + name + "]";
+		return "BASE: " + sop.tableName + "(" + alias +")"+ "[" + name + "]";
 	}
 	
 	/**
@@ -68,5 +70,10 @@ public class SBaseColumn implements IColumn {
 	 */
 	public String getId() {
 		return sop.id + name;
+	}
+
+	@Override
+	public boolean isBaseType() {
+		return true;
 	}
 }

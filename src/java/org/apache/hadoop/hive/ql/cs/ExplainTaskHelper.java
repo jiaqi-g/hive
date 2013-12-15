@@ -378,12 +378,11 @@ public class ExplainTaskHelper {
 		ExplainTaskHelper.opParseCtx = opParseCtx;
 		
 		try {
-			SOperator sop = SOperatorUtil.generateSOperatorTree(sinkOp, opParseCtx);
+			SOperator sop = SOperatorFactory.generateSOperatorTree(sinkOp, opParseCtx);
+			printSop(0, sop);
 			if (TestSQLTypes.mode) {
-				SOperatorUtil.generateRootInfo(sop);
+				//System.out.println("!!!!!!TYPE: " +  new TestSQLTypes().test(sop));
 			}
-			//printSop(0, sop);
-			//System.out.println("!!!!!!TYPE: " +  new TestSQLTypes().test(sop));
 			//System.out.println(TestSQLTypes.tableToPrimaryKeyMap);
 		}
 		catch (Exception e) {
@@ -392,7 +391,9 @@ public class ExplainTaskHelper {
 		}
 		
 		System.out.println("------------");
-		analyzeHelper(sinkOp, 0);
+		if (!TestSQLTypes.mode) {
+			analyzeHelper(sinkOp, 0);
+		}
 		
 		//FunctionDependencyTest.printInfo();
 	}
@@ -400,10 +401,9 @@ public class ExplainTaskHelper {
 	public static void printSop(int level, SOperator sop) {
 		println(level, sop.op.getClass().toString());
 		//println(level, sop);
-		if (TestSQLTypes.mode) {
-			println(level, sop.prettyString());
-			println();
-		}
+		println(level, sop.prettyString());
+		println();
+		
 		for (SOperator op: sop.parents) {
 			printSop(level+1, op);
 		}
@@ -438,7 +438,8 @@ public class ExplainTaskHelper {
 							+ ((ExprNodeConstantDesc)entry.getValue()).getExprString());
 							//+ ((ExprNodeConstantDesc)entry.getValue()).getCols());
 				} else {
-					throw new RuntimeException("ExprNode Type does not supported!");
+					println(level, entry.getValue().getExprString());
+					//throw new RuntimeException("ExprNode Type does not supported!");
 				}
 			}
 		}
@@ -558,7 +559,7 @@ public class ExplainTaskHelper {
 	 */
 	public static void genTableName(RowResolver rwsch, Table tab) {
 		rwsch.tableOriginalName = tab.getTableName();
-		System.out.println("======Gen Table Name=====" + rwsch.tableOriginalName);
+		System.out.println("======Gen Table Name===== " + rwsch.tableOriginalName);
 	}
 	
 	public static void println(int level, Object content) {

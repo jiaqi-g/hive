@@ -16,6 +16,7 @@ import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 import org.apache.hadoop.hive.ql.plan.GroupByDesc;
+import org.apache.hadoop.hive.ql.plan.ReduceSinkDesc;
 import org.apache.hadoop.hive.ql.exec.GroupByOperator;
 
 /**
@@ -26,53 +27,41 @@ import org.apache.hadoop.hive.ql.exec.GroupByOperator;
  */
 public class SReduceSinkOperator extends SOperator {
 	
+	ReduceSinkDesc desc;
+	
 	public SReduceSinkOperator(ReduceSinkOperator op) {
 		super(op);
+		desc = ((ReduceSinkOperator)op).getConf();
+	}
+	
+	private boolean isDerivedBaseColumn(SOperator sop) {
+		return false;
 	}
 	
 	@Override
-	public void setColumnMap() {
-		columnMap = new HashMap<SColumn, SColumn>();
-		
-		//intermediate mapping
-		Map<String, ExprNodeDesc> columnExprMap = op.getColumnExprMap();
-		
-		Set<SColumn> allParentsColumns = new HashSet<SColumn>();
+	public SAbstractColumn getRootColumn(SColumn scol) {
+		//recursively call its parents until rootColumn or null
 		for (SOperator parent: parents) {
-			allParentsColumns.addAll(parent.columns);
-		}
-
-		Map<ExprNodeDesc, SColumn> postMap = new HashMap<ExprNodeDesc, SColumn>();
-		//O(n^2) solution
-		for (ExprNodeDesc desc: columnExprMap.values()) {
-			boolean mapped = false;
-			for (SColumn scol: allParentsColumns) {
-				//special
-				if ((desc instanceof ExprNodeColumnDesc) && scol.equalsToColumnNodeDesc((ExprNodeColumnDesc) desc)) {
-					postMap.put(desc, scol);
-					mapped = true;
-					break;
+			SAbstractColumn key = columnMap.get(scol);
+			if (key instanceof SColumn) {
+				if (parent.columnMap.containsKey( key )) {
+					return parent.getRootColumn( (SColumn) key );
 				}
 			}
-			if (!mapped) {
-				if (desc instanceof ExprNodeConstantDesc) {
-					postMap.put(desc, new SColumn("Constant", "null"));
-				}
-				else {
-					System.out.println("Fatal Error: Can not find mapping from Column Expr to Parent SColumn!");
-				}
-			}
-		}
-
-		//generate final mapping
-		for (SColumn col: columns) {
-			SColumn correspond = postMap.get(columnExprMap.get(col.getName()));
-			if (correspond == null) {
-				System.out.println("Fatal Error: Can not find mapping from output Column to input Column!");
-			}
-			columnMap.put(col, correspond);
 		}
 		
+		return null;
+	}
+	
+	public String prettyString() {
+		return super.prettyString() + " Key Cols: " + desc.getKeyCols() + " Value Cols: " + desc.getValueCols()
+						+ " Partitioned Cols: " + desc.getPartitionCols();
+	}
+	
+	public String toString() {
+		return super.toString();
+		//return super.toString() + "Key Cols: " + desc.getKeyCols() + "Value Cols: " + desc.getValueCols()
+		//		+ "Partitioned Cols: " + desc.getPartitionCols();
 	}
 	
 }

@@ -1,8 +1,9 @@
 package org.apache.hadoop.hive.ql.cs;
 
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
+import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 
-public class SColumn implements IColumn {
+public class SColumn extends SDerivedColumn {
 	
 	String name;
 	String tableAlias;
@@ -40,6 +41,12 @@ public class SColumn implements IColumn {
 		}
 	}
 	
+	@Override
+	public boolean isBaseType() {
+		return false;
+	}
+	
+	
 	public String getName() {
 		return name;
 	}
@@ -47,9 +54,9 @@ public class SColumn implements IColumn {
 	public String getTableAlias() {
 		return tableAlias;
 	}
-
-	public boolean equalsToColumnNodeDesc(ExprNodeColumnDesc desc) {
-		return this.equals(new SColumn(desc));
+	
+	public boolean equalsToNodeDesc(ExprNodeColumnDesc desc) {
+		return this.equals(new SColumn((ExprNodeColumnDesc) desc));
 	}
 
 	/**
@@ -87,4 +94,5 @@ public class SColumn implements IColumn {
 	public String toString() {
 		return tableAlias + "[" + name + "] ";
 	}
+	
 }

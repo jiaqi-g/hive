@@ -7,7 +7,6 @@ public class TestQueries {
 	 * Make sure you have hadoop 2.2.x. and hive 0.12 
 	 * (Notice: This jar file only works with hive 0.12.)
 	 * 
-	 * 
 	 * Run steps.
 	 * 0. Set env variables such as "Hadoop_Home" for hive to start up
 	 * 1. Start hadoop, namenode, datanode, ... , etc
@@ -26,6 +25,7 @@ public class TestQueries {
 	//create table t (a int, b int);
 	public static String[] data = new String[]{
 		//all type 3
+		"Set hive.map.aggr=false;",
 		"explain select * from t;",
 		"explain select sum(t.a) from t;",
 		"explain select * from t x join t y on x.a = y.b;",

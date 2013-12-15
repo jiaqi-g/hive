@@ -20,9 +20,17 @@ import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
+import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeGenericFuncDesc;
 import org.apache.hadoop.hive.ql.plan.TableScanDesc;
+
+class ColumnNotMappedException extends RuntimeException {
+	private static final long serialVersionUID = 1L;
+	public ColumnNotMappedException(String s) {
+		super(s);
+	}
+}
 
 /**
  * Current Supported Operator Types:
@@ -44,120 +52,115 @@ import org.apache.hadoop.hive.ql.plan.TableScanDesc;
 public class SOperator {
 	//1. initialized when built
 	Operator op;
-	String tableAlias;
-	Set<SColumn> columns; //output columns for this operator
+	List<SColumn> columns; //output columns for this operator
 	
 	//2. initialized with set call
 	List<SOperator> parents;
-	
+
 	//3. only be called if above call success
-	Map<SColumn, SColumn> columnMap; //map from *output* columns to *input* columns
-	
-	//4. only be called if above call success
-	Map<SColumn, SBaseColumn> columnRootMap; //map from *output* columns to original info
-	
-	//Initial dependency satisfies keys -> all other columns
-	//used only for TableScanOperator
-	FD rootFD;
-	
-	//methods for functional dependency tests
-	public void setInitialDependencies(FD fd) {
-		this.rootFD = fd;
-	}
-	
-	public void setDeterminists(Set<String> determinists) {
-		rootFD.determinists = determinists;
-	}
-	
-	public void setDependents(Set<String> dependents) {
-		rootFD.dependents = dependents;
-	}
-	
+	Map<SColumn, SAbstractColumn> columnMap; //map from *output* columns to *input* columns
+
 	public SOperator(Operator op) {
 		this.op = op;
-		
+
 		//setup Columns
-		columns = new HashSet<SColumn>();
+		columns = new ArrayList<SColumn>();
 
 		RowSchema schema = op.getSchema();
 		for (ColumnInfo info: schema.getSignature()) {
-			tableAlias = info.getTabAlias();
 			SColumn col = new SColumn(info.getInternalName(), info.getTabAlias());
+			
 			columns.add(col);
 		}
+
+		columnMap = new HashMap<SColumn, SAbstractColumn>();
+		//initial value
+		//for (SColumn col: columns) {
+			//columnMap.put(col, col);
+		//}
 	}
 
 	public void setColumnMap() {
-		columnMap = new HashMap<SColumn, SColumn>();
-		
 		//intermediate mapping
-		setupMapping(op.getColumnExprMap());
-	}
-
-	private void setupMapping(Map<String, ExprNodeDesc> columnExprMap) {
-
-		Set<SColumn> allParentsColumns = new HashSet<SColumn>();
-		for (SOperator parent: parents) {
-			allParentsColumns.addAll(parent.columns);
-		}
-
-		Map<ExprNodeDesc, SColumn> postMap = new HashMap<ExprNodeDesc, SColumn>();
-		//O(n^2) solution
-		for (ExprNodeDesc desc: columnExprMap.values()) {
-			boolean mapped = false;
-			for (SColumn scol: allParentsColumns) {
-				if (scol.equalsToColumnNodeDesc((ExprNodeColumnDesc) desc)) {
-					postMap.put(desc, scol);
-					mapped = true;
-					break;
-				}
+		Map<String, ExprNodeDesc> columnExprMap = op.getColumnExprMap();
+		if (columnExprMap == null || columnExprMap.size() == 0) {
+			for (SColumn scol: columns) {
+				columnMap.put(scol, scol);
 			}
-			if (!mapped) {
-				System.out.println("Fatal Error: Can not find mapping from Column Expr to Parent SColumn!");
+		} else {
+			setupMapping(columnExprMap);
+		}	
+	}
+	
+	private void setupMapping(Map<String, ExprNodeDesc> columnExprMap) {
+		/**
+		 * postMap maps from ExprNodeDesc -> SColumn
+		 */
+		Map<ExprNodeDesc, SColumn> postMap = new HashMap<ExprNodeDesc, SColumn>();
+		
+		//parents all columns, since table alias only stores in col
+		List<SColumn> parentsAllColumns = new ArrayList<SColumn>();
+		for (SOperator p: parents) {
+			parentsAllColumns.addAll(p.columns);
+		}
+		
+		//only maps ExprNodeColumnDesc type
+		for (ExprNodeDesc desc: columnExprMap.values()) {
+			if (desc instanceof ExprNodeColumnDesc) {
+				for (SColumn parentScol: parentsAllColumns) {
+					if (parentScol.equalsToNodeDesc((ExprNodeColumnDesc) desc)) {
+						postMap.put(desc, parentScol);
+						break;
+					}
+				}
+			} else {
+				//do nothing
 			}
 		}
 
 		//generate final mapping
 		for (SColumn col: columns) {
-			SColumn correspond = postMap.get(columnExprMap.get(col.getName()));
+			SAbstractColumn correspond = postMap.get(columnExprMap.get(col.getName()));
 			if (correspond == null) {
-				System.out.println("Fatal Error: Can not find mapping from output Column to input Column!");
+				correspond = SOperatorFactory.generateSColumnFromDesc(columnExprMap.get(col.getName()), this);
 			}
 			columnMap.put(col, correspond);
 		}
+	}
 
+	public SAbstractColumn getRootColumn(SColumn scol) {
+		//recursively call its parents until rootColumn or null
+		for (SOperator parent: parents) {
+			SAbstractColumn key = columnMap.get(scol);
+			if (key instanceof SColumn) {
+				if (parent.columnMap.containsKey( key )) {
+					return parent.getRootColumn( (SColumn) key );
+				}
+			}
+		}
+
+		throw new ColumnNotMappedException(this.getClass() + "   " + columns + "  " + columnMap);
 	}
 
 	//bean methods
-
+	
 	public void setParents(List<SOperator> parents) {
 		this.parents = parents;
 	}
-
-	public Map<SColumn, SBaseColumn> getColumnRootMap() {
-		return columnRootMap;
-	}
-
-	public void setColumnRootMap(Map<SColumn, SBaseColumn> columnRootMap) {
-		this.columnRootMap = columnRootMap;
-	}
-
+	
 	public String toString() {
-		if (columnRootMap == null) {
-			return op.getClass() + "\n" + columnMap.toString() + "\n" + "null";
-		}
-		else {
-			return op.getClass() + "\n" + columnMap.toString() + "\n" + columnRootMap.toString();
-		}
+		return op.getClass() + "\n" + columnMap.toString();
 	}
-
-	public String prettyString() {
-
-		//return columnMap.toString();
-		if (columnRootMap != null) {
-			return columnRootMap.values().toString();
+	
+	public ArrayList<SAbstractColumn> getAllRootColumns() {
+		ArrayList<SAbstractColumn> lst = new ArrayList<SAbstractColumn>();
+		for (SColumn scol: columns) {
+			lst.add(getRootColumn(scol));
 		}
-
-		return "null";
+		return lst;
+	}
+	
+	public String prettyString() {
+		return getAllRootColumns().toString();
 	}
 }

@@ -1,10 +1,17 @@
 package org.apache.hadoop.hive.ql.cs;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.hadoop.hive.ql.exec.TableScanOperator;
+
+class RootColumnNotFoundException extends RuntimeException {
+	private static final long serialVersionUID = 1L;
+}
 
 /**
  * 
@@ -19,40 +26,34 @@ public class STableScanOperator extends SOperator {
 	 */
 	String tableName;
 	Long id = 0L;
+	Map<SColumn, SBaseColumn> baseColumnMap;
 	
 	public STableScanOperator(TableScanOperator op) {
 		super(op);
 		
 		id = UniqueIdGenerater.getNextId();
+		setupBaseColumns();
 	}
 	
+	private void setupBaseColumns() {
+		baseColumnMap = new HashMap<SColumn, SBaseColumn>();
+		for (SColumn scol: columns) {
+			//convert sCol to sBaseCcol
+			baseColumnMap.put(scol, new SBaseColumn(scol, this, scol.tableAlias));
+		}
+	}
+
 	public void setTableName(String tableName){
 		this.tableName = tableName;
 	}
 	
-	public Set<String> getAllColumnsIds() {
-		Set<String> hashSet = new HashSet<String>();
-		for (SBaseColumn bcol: columnRootMap.values()) {
-			hashSet.add(bcol.getId());
-		}
-		return hashSet;
-	}
-	
 	@Override
-	public void setColumnMap() {
-		columnMap = new HashMap<SColumn, SColumn>();
-		
-		//root mapping
-		for (SColumn col: columns) {
-			columnMap.put(col, col);
+	public SBaseColumn getRootColumn(SColumn scol) {
+		SBaseColumn bcol =  baseColumnMap.get(scol);
+		if (bcol == null) {
+			throw new RootColumnNotFoundException();
+		} else {
+			return bcol;
 		}
-	}
-	
-	@Override
-	public String prettyString() {
-		if (columnRootMap != null) {
-			return columnRootMap.values().toString();
-		}
-		return "null";
 	}
 }

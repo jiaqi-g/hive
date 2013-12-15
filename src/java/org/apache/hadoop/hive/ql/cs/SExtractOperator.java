@@ -17,26 +17,9 @@ public class SExtractOperator extends SOperator {
 	public SExtractOperator(ExtractOperator op) {
 		super(op);
 	}
-
-	@Override
-	public void setColumnMap() {
-		columnMap = new HashMap<SColumn, SColumn>();
-		if (parents.size() == 0) {
-			System.out.println("Fatal Error: SExtractOperator Parents do not exist!");
-		}
-		else {
-			for (SColumn scol: parents.get(0).columns) {
-				columnMap.put(scol, scol);
-			}
-		}
-	}
-
+	
 	@Override
 	public String prettyString() {
-		if (columnRootMap != null) {
-			return columnRootMap.values().toString() + " Order By";
-		}
-		
-		return "null";
+		return super.prettyString() + " Order By ";
 	}
 }
