@@ -1,5 +1,7 @@
 package org.apache.hadoop.hive.ql.cs;
 
+import java.util.HashSet;
+
 public class SBaseColumn extends SAbstractColumn {
 
 	/**
@@ -21,6 +23,19 @@ public class SBaseColumn extends SAbstractColumn {
 
 	@Override
 	public boolean isGeneratedByAggregate() {
+		return false;
+	}
+
+	@Override
+	public HashSet<SBaseColumn> getBaseColumn() {
+		HashSet<SBaseColumn> ret = new HashSet<SBaseColumn>();
+		ret.add(this);
+		
+		return ret;
+	}
+
+	@Override
+	public boolean isCorrelatedWithAggregate() {
 		return false;
 	}
 }

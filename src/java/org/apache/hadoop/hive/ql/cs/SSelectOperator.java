@@ -1,5 +1,6 @@
 package org.apache.hadoop.hive.ql.cs;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -31,7 +32,7 @@ public class SSelectOperator extends SOperator {
 	@Override
 	public boolean isComplex(boolean hasComplexOnTheWay) {
 		for (SOperator p : parents) {
-			if (p.isComplex(false)) {
+			if (p.isComplex(false || hasComplexOnTheWay)) {
 				return true;
 			}
 		}
@@ -39,4 +40,10 @@ public class SSelectOperator extends SOperator {
 		return false;
 	}
 	
+//	@Override
+//	public boolean isEligible(HashSet<FD> rules, HashSet<SBaseColumn> bases) {
+//		// TODO: test
+//		
+//		return true;
+//	}
 }

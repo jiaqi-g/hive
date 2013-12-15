@@ -1,5 +1,7 @@
 package org.apache.hadoop.hive.ql.cs;
 
+import java.util.HashSet;
+
 import org.apache.hadoop.hive.ql.plan.ExprNodeColumnDesc;
 
 public class SColumn extends SDerivedColumn {
@@ -51,10 +53,12 @@ public class SColumn extends SDerivedColumn {
 		for (SOperator p : sop.parents) {
 			for (SDerivedColumn c : p.columns) {
 				if (c.equals(n, t)) {
+					//System.out.println("&&&&& C " + c + " N " + n + " T " + t);
 					directlyConnected.add(c);
 					return;
 				}
 			}
+			System.out.println(sop.getClass() + " parent " + sop.parents.get(0).getClass() + "   ****** P COLS " + p.columns + " N " + n + " T " + t);
 			if (p instanceof SGroupByOperator) {
 				directlyConnected.add(((SGroupByOperator)p).getAggregateAt(i));
 				return;
@@ -62,4 +66,18 @@ public class SColumn extends SDerivedColumn {
 		}
 	}
 
+	@Override
+	public HashSet<SBaseColumn> getBaseColumn() {
+		HashSet<SBaseColumn> ret = new HashSet<SBaseColumn>();
+		for (SDerivedColumn c : directlyConnected) {
+			HashSet<SBaseColumn> t = c.getBaseColumn();
+			if (t == null) {
+				return null;
+			} else {
+				ret.addAll(t);
+			}
+		}
+
+		return ret;
+	}
 }

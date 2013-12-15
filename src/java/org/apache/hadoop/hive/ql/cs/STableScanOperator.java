@@ -2,6 +2,7 @@ package org.apache.hadoop.hive.ql.cs;
 
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,4 +64,14 @@ public class STableScanOperator extends SOperator {
 	public boolean hasNestedAggregates() {
 		return false;
 	}
+	
+//	@Override
+//	public boolean isEligible(HashSet<FD> rules, HashSet<SBaseColumn> bases) {
+//		// add base FD
+//		// TODO
+//		
+//		bases.addAll(baseColumnMap.values());
+//		
+//		return true;
+//	}
 }

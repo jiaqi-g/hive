@@ -1,5 +1,7 @@
 package org.apache.hadoop.hive.ql.cs;
 
+import java.util.HashSet;
+
 import org.apache.hadoop.hive.ql.plan.ExprNodeConstantDesc;
 
 public class SConstant extends SDerivedColumn {
@@ -24,5 +26,10 @@ public class SConstant extends SDerivedColumn {
 	@Override
 	public void setup(int i) {
 		// do nothing
+	}
+	
+	@Override
+	public HashSet<SBaseColumn> getBaseColumn() {
+		return new HashSet<SBaseColumn>();
 	}
 }

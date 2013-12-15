@@ -1,5 +1,7 @@
 package org.apache.hadoop.hive.ql.cs;
 
+import java.util.HashSet;
+
 public abstract class SAbstractColumn {
 	protected String name;
 	protected String tableAlias;
@@ -15,8 +17,12 @@ public abstract class SAbstractColumn {
 	
 	public abstract boolean isGeneratedByAggregate();
 	
+	public abstract boolean isCorrelatedWithAggregate();
+	
 	@Override
 	public String toString() {
 		return tableAlias + "[" + name + "]";
 	}
+	
+	public abstract HashSet<SBaseColumn> getBaseColumn();
 }

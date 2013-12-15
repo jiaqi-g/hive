@@ -1,6 +1,7 @@
 package org.apache.hadoop.hive.ql.cs;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,6 +104,16 @@ public class SOperator {
 
 		return false;
 	}
+	
+	public boolean hasCorrelatedAggregates() {
+		for (SOperator p : parents) {
+			if(p.hasCorrelatedAggregates()) {
+				return true;
+			}
+		}
+
+		return false;
+	}
 
 	public boolean hasUnionOperators() {
 		for (SOperator p : parents) {
@@ -167,4 +178,16 @@ public class SOperator {
 		
 		return false;
 	}
+	
+//	public boolean isEligible(HashSet<FD> rules, HashSet<SBaseColumn> bases) {
+//		for (SOperator p : parents) {
+//			HashSet<SBaseColumn> t = new HashSet<SBaseColumn>();
+//			if (!p.isEligible(rules, t)) {
+//				return false;
+//			}
+//			bases.addAll(t);
+//		}
+//		
+//		return true;
+//	}
 }

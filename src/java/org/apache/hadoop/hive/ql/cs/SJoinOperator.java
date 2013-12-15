@@ -1,5 +1,6 @@
 package org.apache.hadoop.hive.ql.cs;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -40,5 +41,4 @@ public class SJoinOperator extends SOperator {
 		
 		return true;
 	}
-	
 }

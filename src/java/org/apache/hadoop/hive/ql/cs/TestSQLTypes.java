@@ -99,6 +99,10 @@ public class TestSQLTypes {
 			return 3;
 		}
 		
+		if (sOperator.hasCorrelatedAggregates()) {
+			return 5;
+		}
+		
 		//if (isType3(sOperator)) return 3;
 		//if (isType4(sOperator)) return 4;
 

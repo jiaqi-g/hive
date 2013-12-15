@@ -1,5 +1,6 @@
 package org.apache.hadoop.hive.ql.cs;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,4 +37,11 @@ public class SFilterOperator extends SOperator {
 		}
 	}
 	
+//	@Override
+//	public boolean isEligible(HashSet<FD> rules, HashSet<SBaseColumn> bases) {
+//		// add FD
+//		// TODO
+//		
+//		return true;
+//	}
 }

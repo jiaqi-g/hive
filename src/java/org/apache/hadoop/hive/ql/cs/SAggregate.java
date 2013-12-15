@@ -19,6 +19,11 @@ public class SAggregate extends SDerivedColumn {
 	public boolean isGeneratedByAggregate() {
 		return true;
 	}
+	
+	@Override
+	public boolean isCorrelatedWithAggregate() {
+		return true;
+	}
 
 	@Override
 	public int hashCode() {
@@ -53,5 +58,10 @@ public class SAggregate extends SDerivedColumn {
 				}
 			}
 		}
+	}
+	
+	@Override
+	public HashSet<SBaseColumn> getBaseColumn() {
+		return null;
 	}
 }

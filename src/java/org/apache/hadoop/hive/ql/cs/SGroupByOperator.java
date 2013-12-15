@@ -5,7 +5,9 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 
+import org.apache.hadoop.hive.ql.exec.ColumnInfo;
 import org.apache.hadoop.hive.ql.exec.Operator;
+import org.apache.hadoop.hive.ql.exec.RowSchema;
 import org.apache.hadoop.hive.ql.parse.OpParseContext;
 import org.apache.hadoop.hive.ql.plan.AggregationDesc;
 import org.apache.hadoop.hive.ql.plan.ExprNodeDesc;
@@ -45,7 +47,7 @@ public class SGroupByOperator extends SOperator {
 
 		keys = new ArrayList<SAbstractColumn>(columns);
 		columns.addAll(aggregators);
-		System.out.println("COLUMNS: " + columns);
+		System.out.println("AGGREGATORS " + aggregators + " COLUMNS: " + columns);
 
 		isDeduplication = op.getConf().getAggregators().isEmpty();
 	}
@@ -56,9 +58,14 @@ public class SGroupByOperator extends SOperator {
 
 		aggregators = new ArrayList<SAggregate>();
 
-		for (AggregationDesc aggr: ((GroupByDesc)op.getConf()).getAggregators()) {
-			aggregators.add(new SAggregate(null, null, this, aggr));
+		ArrayList<ColumnInfo> colInfos = op.getSchema().getSignature();
+		ArrayList<AggregationDesc> descs = ((GroupByDesc)op.getConf()).getAggregators();
+		for (int i = 0; i <descs.size() ; i++) {
+			AggregationDesc aggr = descs.get(i);
+			ColumnInfo info = colInfos.get(i + columns.size());
+			aggregators.add(new SAggregate(info.getInternalName(), info.getTabAlias(), this, aggr));
 		}
+		
 	}
 
 	public SAggregate getAggregateAt(int i) {
@@ -93,20 +100,38 @@ public class SGroupByOperator extends SOperator {
 
 		for (SAbstractColumn k : keys) {
 			if (k.isGeneratedByAggregate()) {
-				System.out.println("========----Key: " + k);
 				return true;
 			}
 		}
 
 		for (SAggregate aggr : aggregators) {
 			for (SAbstractColumn param : aggr.getParams()) {
-				System.out.println("========----Param: " + param);
 				if (param.isGeneratedByAggregate()) {
 					return true;
 				}
 			}
 		}
 
+		return false;
+	}
+	
+	@Override
+	public boolean hasCorrelatedAggregates() {
+		if (super.hasCorrelatedAggregates()) {
+			return true;
+		}
+
+		
+		
+		for (SAggregate aggr : aggregators) {
+			System.out.println("KKK Here" + aggr.getParams());
+			for (SAbstractColumn param : aggr.getParams()) {
+				if (param.isCorrelatedWithAggregate()) {
+					return true;
+				}
+			}
+		}
+		
 		return false;
 	}
 
@@ -127,6 +152,7 @@ public class SGroupByOperator extends SOperator {
 			return true;
 		}
 		
+		System.out.println("YYY HERE!!!");
 		return super.isComplex(true);
 	}
 	
@@ -144,4 +170,15 @@ public class SGroupByOperator extends SOperator {
 	public boolean hasDeduplication() {
 		return true;
 	}
+	
+//	@Override
+//	public boolean isEligible(HashSet<FD> rules, HashSet<SBaseColumn> bases) {
+//		// TODO: test
+//		
+//		if (isDeduplication) {
+//			bases.clear();
+//		}
+//		
+//		return true;
+//	}
 }
